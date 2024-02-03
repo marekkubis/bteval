@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bteval"
+dynamic = ["version"]
+description = 'BTEval is a Python library for measuring the robustness of natural language understanding models to speech recognition errors.'
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ['backtranscription','nlu','asr','tts']
+authors = [
+  { name = "Marek Kubis", email = "marek.kubis@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/marekkubis/bteval#readme"
+Homepage = "https://github.com/marekkubis/bteval"
+Issues = "https://github.com/marekkubis/bteval/issues"
+Source = "https://github.com/marekkubis/bteval"
+
+[tool.hatch.version]
+path = "src/bteval/__about__.py"
+
+[tool.hatch.envs.default]
+python = "3.10"
+dependencies = [
+  "black",
+  "coverage[toml]>=6.5",
+  "flake8",
+  "ipdb",
+  "ipython",
+  "isort",
+  "mypy>=1.0.0",
+  "numpy",
+  "pytest",
+  "torch",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[tool.coverage.run]
+source_pkgs = ["bteval", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/bteval/__about__.py",
+]
+
+[tool.coverage.paths]
+bteval = ["src/bteval", "*/bteval/src/bteval"]
+tests = ["tests", "*/bteval/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
