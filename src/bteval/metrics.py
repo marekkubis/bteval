@@ -1,20 +1,20 @@
 import warnings
 
 
-def aggregate(metric: str, robust: int, non_robust: int, zero_division) -> float:
+def aggregate_robustness(robust: int, non_robust: int, zero_division) -> float:
     """Aggregates robust and non-robust cases."""
 
     try:
         return robust / (robust + non_robust)
     except ZeroDivisionError:
         if zero_division == "warn":
-            warnings.warn(f"{metric} score ill-defined and being set to 0.0")
+            warnings.warn("Robustness score ill-defined and being set to 0.0")
             return 0.0
 
         return zero_division
 
 
-def remove_const_cases(y_true, y_before, y_after, x_before, x_after):
+def remove_const_text_samples(y_true, y_before, y_after, x_before, x_after):
     "Remove samples where reference and back transcribed texts are the same."
 
     if x_before is None or x_after is None:
@@ -31,6 +31,78 @@ def remove_const_cases(y_true, y_before, y_after, x_before, x_after):
             res_after.append(ya)
 
     return res_true, res_before, res_after
+
+
+def score_robustness(
+    robust_case_func,
+    non_robust_case_func,
+    y_true,
+    y_before,
+    y_after,
+    x_before,
+    x_after,
+    zero_division,
+) -> float:
+    """Scores robustness in accordance with robust_case_func and non_robust_case_func."""
+
+    y_true, y_before, y_after = remove_const_text_samples(
+        y_true, y_before, y_after, x_before, x_after
+    )
+
+    robust = 0
+    non_robust = 0
+
+    for t, b, a in zip(y_true, y_before, y_after):
+        if robust_case_func(t, b, a):
+            robust += 1
+        elif non_robust_case_func(t, b, a):
+            non_robust += 1
+
+    return aggregate_robustness(robust, non_robust, zero_division=zero_division)
+
+
+def c_const_case(y_true, y_before, y_after) -> bool:
+    return y_before == y_true and y_after == y_true
+
+
+def i_const_case(y_true, y_before, y_after) -> bool:
+    return y_before != y_true and y_after != y_true and y_before == y_after
+
+
+def const_case(y_true, y_before, y_after) -> bool:
+    return y_before == y_after
+
+
+def c_to_i_case(y_true, y_before, y_after) -> bool:
+    return y_before == y_true and y_after != y_true
+
+
+def i_to_i_case(y_true, y_before, y_after) -> bool:
+    return y_before != y_true and y_after != y_true and y_before != y_after
+
+
+def i_to_c_case(y_true, y_before, y_after) -> bool:
+    return y_before != y_true and y_after == y_true
+
+
+def changed_case(y_true, y_before, y_after) -> bool:
+    return y_before != y_after
+
+
+def r1_robust_case(y_true, y_before, y_after) -> bool:
+    return c_const_case(y_true, y_before, y_after)
+
+
+def r1_non_robust_case(y_true, y_before, y_after) -> bool:
+    return c_to_i_case(y_true, y_before, y_after)
+
+
+def r1_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return (
+        i_const_case(y_true, y_before, y_after)
+        or i_to_i_case(y_true, y_before, y_after)
+        or i_to_c_case(y_true, y_before, y_after)
+    )
 
 
 def r1_score(
@@ -71,17 +143,32 @@ def r1_score(
 
         irrelevant cases: constI, I->I, I->C
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r1_robust_case,
+        r1_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
 
-    robust = const_c
-    non_robust = c_to_i
+def r13_robust_case(y_true, y_before, y_after) -> bool:
+    return c_const_case(y_true, y_before, y_after)
 
-    return aggregate("r1", robust, non_robust, zero_division=zero_division)
+
+def r13_non_robust_case(y_true, y_before, y_after) -> bool:
+    return c_to_i_case(y_true, y_before, y_after) or i_to_c_case(
+        y_true, y_before, y_after
+    )
+
+
+def r13_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return i_const_case(y_true, y_before, y_after) or i_to_i_case(
+        y_true, y_before, y_after
+    )
 
 
 def r13_score(
@@ -123,18 +210,32 @@ def r13_score(
 
         irrelevant cases: constI, I->I
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r13_robust_case,
+        r13_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
-    i_to_c = i_to_c_change_count(y_true, y_before, y_after)
 
-    robust = const_c
-    non_robust = c_to_i + i_to_c
+def r13p_robust_case(y_true, y_before, y_after) -> bool:
+    return c_const_case(y_true, y_before, y_after) or i_to_c_case(
+        y_true, y_before, y_after
+    )
 
-    return aggregate("r13", robust, non_robust, zero_division=zero_division)
+
+def r13p_non_robust_case(y_true, y_before, y_after) -> bool:
+    return c_to_i_case(y_true, y_before, y_after)
+
+
+def r13p_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return i_const_case(y_true, y_before, y_after) or i_to_i_case(
+        y_true, y_before, y_after
+    )
 
 
 def r13p_score(
@@ -177,18 +278,32 @@ def r13p_score(
 
         irrelevant cases: constI, I->I
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r13p_robust_case,
+        r13p_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    i_to_c = i_to_c_change_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
 
-    robust = const_c + i_to_c
-    non_robust = c_to_i
+def r12_robust_case(y_true, y_before, y_after) -> bool:
+    return c_const_case(y_true, y_before, y_after) or i_const_case(
+        y_true, y_before, y_after
+    )
 
-    return aggregate("r13p", robust, non_robust, zero_division=zero_division)
+
+def r12_non_robust_case(y_true, y_before, y_after) -> bool:
+    return c_to_i_case(y_true, y_before, y_after) or i_to_i_case(
+        y_true, y_before, y_after
+    )
+
+
+def r12_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return i_to_c_case(y_true, y_before, y_after)
 
 
 def r12_score(
@@ -229,19 +344,34 @@ def r12_score(
 
         irrelevant cases: I->C
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r12_robust_case,
+        r12_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    const_i = i_const_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
-    i_to_i = i_to_i_change_count(y_true, y_before, y_after)
 
-    robust = const_c + const_i
-    non_robust = c_to_i + i_to_i
+def r123_robust_case(y_true, y_before, y_after) -> bool:
+    return c_const_case(y_true, y_before, y_after) or i_const_case(
+        y_true, y_before, y_after
+    )
 
-    return aggregate("r12", robust, non_robust, zero_division=zero_division)
+
+def r123_non_robust_case(y_true, y_before, y_after) -> bool:
+    return (
+        c_to_i_case(y_true, y_before, y_after)
+        or i_to_i_case(y_true, y_before, y_after)
+        or i_to_c_case(y_true, y_before, y_after)
+    )
+
+
+def r123_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return False
 
 
 def r123_score(
@@ -281,20 +411,34 @@ def r123_score(
 
         irrelevant cases: -
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r123_robust_case,
+        r123_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    const_i = i_const_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
-    i_to_i = i_to_i_change_count(y_true, y_before, y_after)
-    i_to_c = i_to_c_change_count(y_true, y_before, y_after)
 
-    robust = const_c + const_i
-    non_robust = c_to_i + i_to_i + i_to_c
+def r123p_robust_case(y_true, y_before, y_after) -> bool:
+    return (
+        c_const_case(y_true, y_before, y_after)
+        or i_const_case(y_true, y_before, y_after)
+        or i_to_c_case(y_true, y_before, y_after)
+    )
 
-    return aggregate("r123", robust, non_robust, zero_division=zero_division)
+
+def r123p_non_robust_case(y_true, y_before, y_after) -> bool:
+    return c_to_i_case(y_true, y_before, y_after) or i_to_i_case(
+        y_true, y_before, y_after
+    )
+
+
+def r123p_irrelevant_case(y_true, y_before, y_after) -> bool:
+    return False
 
 
 def r123p_score(
@@ -334,61 +478,57 @@ def r123p_score(
 
         irrelevant cases: -
     """
-    y_true, y_before, y_after = remove_const_cases(
-        y_true, y_before, y_after, x_before, x_after
+    return score_robustness(
+        r123p_robust_case,
+        r123p_non_robust_case,
+        y_true,
+        y_before,
+        y_after,
+        x_before,
+        x_after,
+        zero_division=zero_division,
     )
 
-    const_c = c_const_count(y_true, y_before, y_after)
-    const_i = i_const_count(y_true, y_before, y_after)
-    c_to_i = c_to_i_change_count(y_true, y_before, y_after)
-    i_to_i = i_to_i_change_count(y_true, y_before, y_after)
-    i_to_c = i_to_c_change_count(y_true, y_before, y_after)
 
-    robust = const_c + const_i + i_to_c
-    non_robust = c_to_i + i_to_i
-
-    return aggregate("r123p", robust, non_robust, zero_division=zero_division)
-
-
-def c_to_i_change_count(y_true, y_before, y_after) -> int:
+def c_to_i_count(y_true, y_before, y_after) -> int:
     """The number of model outputs that change from correct to incorrect after back transcription."""
     c = 0
 
-    for e, b, a in zip(y_true, y_before, y_after):
-        if b == e and a != e:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if c_to_i_case(t, b, a):
             c += 1
 
     return c
 
 
-def i_to_i_change_count(y_true, y_before, y_after) -> int:
+def i_to_i_count(y_true, y_before, y_after) -> int:
     """The number of model outputs that change from incorrect to incorrect after back transcription."""
     c = 0
 
-    for e, b, a in zip(y_true, y_before, y_after):
-        if b != e and a != e and b != a:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if i_to_i_case(t, b, a):
             c += 1
 
     return c
 
 
-def i_to_c_change_count(y_true, y_before, y_after) -> int:
+def i_to_c_count(y_true, y_before, y_after) -> int:
     """The number of model outputs that change from incorrect to correct after back transcription."""
     c = 0
 
-    for e, b, a in zip(y_true, y_before, y_after):
-        if b != e and a == e:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if i_to_c_case(t, b, a):
             c += 1
 
     return c
 
 
-def change_count(y_true, y_before, y_after) -> int:
+def changed_count(y_true, y_before, y_after) -> int:
     """The number of model outputs that change after back transcription."""
     c = 0
 
-    for _, b, a in zip(y_true, y_before, y_after):
-        if b != a:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if changed_case(t, b, a):
             c += 1
 
     return c
@@ -398,8 +538,8 @@ def i_const_count(y_true, y_before, y_after) -> int:
     """The number of incorrect model outputs that remain unchanged after back transcription."""
     c = 0
 
-    for e, b, a in zip(y_true, y_before, y_after):
-        if b != e and a != e and b == a:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if i_const_case(t, b, a):
             c += 1
 
     return c
@@ -409,8 +549,8 @@ def c_const_count(y_true, y_before, y_after) -> int:
     """The number of correct model outputs that remain unchanged after back transcription."""
     c = 0
 
-    for e, b, a in zip(y_true, y_before, y_after):
-        if b == e and a == e:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if c_const_case(t, b, a):
             c += 1
 
     return c
@@ -420,8 +560,8 @@ def const_count(y_true, y_before, y_after) -> int:
     """The number of model outputs that remain unchanged after back transcription."""
     c = 0
 
-    for _, b, a in zip(y_true, y_before, y_after):
-        if b == a:
+    for t, b, a in zip(y_true, y_before, y_after):
+        if const_case(t, b, a):
             c += 1
 
     return c
